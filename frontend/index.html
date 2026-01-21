@@ -4,25 +4,53 @@
     <meta charset="utf-8" />
     <title>SimTrace</title>
     <style>
-      body { font-family: Arial, sans-serif; display: grid; grid-template-columns: 250px 1fr 300px; gap: 12px; padding: 12px; }
+      body { font-family: Arial, sans-serif; display: grid; grid-template-columns: 260px 1fr 320px; gap: 12px; padding: 12px; }
       #canvas { border: 1px solid #ccc; width: 100%; height: 520px; }
       .panel { border: 1px solid #ddd; padding: 10px; border-radius: 8px; }
+      .runItem { padding: 8px; border: 1px solid #eee; border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
+      .runItem:hover { background: #f7f7f7; }
+      .runActive { background: #f2f2f2; border-color: #ddd; }
       .event { padding: 6px; border-bottom: 1px solid #eee; }
       .active { background: #f2f2f2; }
       input[type="range"] { width: 100%; }
+      .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      button { padding: 6px 10px; border: 1px solid #ddd; background: white; border-radius: 8px; cursor: pointer; }
+      button:hover { background: #f7f7f7; }
+      select { padding: 6px 10px; border: 1px solid #ddd; border-radius: 8px; }
+      .muted { color: #666; font-size: 12px; }
+      .statgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+      .stat { border: 1px solid #eee; border-radius: 8px; padding: 8px; }
+      .stat b { display: block; font-size: 12px; color: #666; }
+      .stat span { font-size: 16px; }
     </style>
   </head>
   <body>
     <div class="panel">
       <h3>Runs</h3>
-      <button id="loadBtn">Load sample_run</button>
-      <div id="runMeta"></div>
+      <div id="runsList" class="muted">Loading…</div>
+      <hr />
+      <div id="runMeta" class="muted"></div>
+      <div class="statgrid" id="stats"></div>
     </div>
 
     <div class="panel">
       <h3>Replay</h3>
       <canvas id="canvas" width="900" height="520"></canvas>
-      <div>
+
+      <div class="row" style="margin-top:10px;">
+        <button id="playBtn">Play</button>
+        <button id="pauseBtn" disabled>Pause</button>
+
+        <label class="muted">Speed</label>
+        <select id="speedSel">
+          <option value="0.5">0.5x</option>
+          <option value="1" selected>1x</option>
+          <option value="2">2x</option>
+          <option value="4">4x</option>
+        </select>
+      </div>
+
+      <div style="margin-top:10px;">
         <input id="timeSlider" type="range" min="0" max="200" value="0" />
         <div>Time: <span id="timeLabel">0.0</span>s</div>
       </div>
@@ -30,33 +58,42 @@
 
     <div class="panel">
       <h3>Events</h3>
-      <div id="events"></div>
+      <div id="events" class="muted">Load a run.</div>
     </div>
 
     <script>
       const canvas = document.getElementById("canvas");
       const ctx = canvas.getContext("2d");
+
+      const runsList = document.getElementById("runsList");
+      const runMeta = document.getElementById("runMeta");
+      const statsDiv = document.getElementById("stats");
+
       const slider = document.getElementById("timeSlider");
       const timeLabel = document.getElementById("timeLabel");
       const eventsDiv = document.getElementById("events");
-      const runMeta = document.getElementById("runMeta");
 
+      const playBtn = document.getElementById("playBtn");
+      const pauseBtn = document.getElementById("pauseBtn");
+      const speedSel = document.getElementById("speedSel");
+
+      let runIndex = null;
       let run = null;
+      let playing = false;
+      let timer = null;
 
       function worldToCanvas(x, y) {
-        // simple scaling + flip y so it looks natural
         const scale = 80;
-        const cx = 100 + x * scale;
-        const cy = 450 - y * scale;
+        const cx = 120 + x * scale;
+        const cy = 460 - y * scale;
         return [cx, cy];
       }
 
       function draw(t) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-
         if (!run) return;
 
-        // path
+        // draw path
         ctx.beginPath();
         run.frames.forEach((f, i) => {
           const [cx, cy] = worldToCanvas(f.x, f.y);
@@ -65,21 +102,21 @@
         });
         ctx.stroke();
 
-        // current position (nearest frame)
+        // current frame (nearest)
         let best = run.frames[0];
         for (const f of run.frames) {
           if (Math.abs(f.t - t) < Math.abs(best.t - t)) best = f;
         }
+
+        // draw robot dot
         const [bx, by] = worldToCanvas(best.x, best.y);
         ctx.beginPath();
         ctx.arc(bx, by, 7, 0, Math.PI * 2);
         ctx.fill();
-
-        // events highlight
-        const activeTypes = new Set(run.events.filter(e => e.t <= t).map(e => e.type));
       }
 
       function renderEvents(t) {
+        if (!run) return;
         eventsDiv.innerHTML = "";
         run.events.forEach(e => {
           const div = document.createElement("div");
@@ -89,32 +126,125 @@
         });
       }
 
-      document.getElementById("loadBtn").onclick = async () => {
-        const res = await fetch("../runs/sample_run.json");
+      function setTime(t) {
+        if (!run) return;
+        // convert t -> slider index
+        const idx = Math.max(0, Math.min(Math.floor(t / run.dt), Number(slider.max)));
+        slider.value = String(idx);
+        const t2 = idx * run.dt;
+        timeLabel.textContent = t2.toFixed(1);
+        draw(t2);
+        renderEvents(t2);
+      }
+
+      function stopPlayback() {
+        playing = false;
+        playBtn.disabled = false;
+        pauseBtn.disabled = true;
+        if (timer) clearInterval(timer);
+        timer = null;
+      }
+
+      function startPlayback() {
+        if (!run) return;
+        playing = true;
+        playBtn.disabled = true;
+        pauseBtn.disabled = false;
+
+        const speed = Number(speedSel.value);
+        timer = setInterval(() => {
+          const idx = Number(slider.value);
+          const next = idx + speed; // speed is in "frames per tick"
+          if (next >= Number(slider.max)) {
+            setTime(Number(slider.max) * run.dt);
+            stopPlayback();
+            return;
+          }
+          slider.value = String(Math.floor(next));
+          const t = Number(slider.value) * run.dt;
+          timeLabel.textContent = t.toFixed(1);
+          draw(t);
+          renderEvents(t);
+        }, 100);
+      }
+
+      async function loadRun(file, highlightId) {
+        stopPlayback();
+        const res = await fetch(`../runs/${file}`);
         run = await res.json();
 
+        // meta + stats
         runMeta.innerHTML = `
           <div><b>ID:</b> ${run.run_id}</div>
           <div><b>Sim:</b> ${run.meta.sim}</div>
           <div><b>World:</b> ${run.meta.world}</div>
           <div><b>Robot:</b> ${run.meta.robot}</div>
+          <div class="muted">Controller: ${run.meta.controller}</div>
         `;
 
-        slider.max = Math.floor(run.stats.duration_s / run.dt);
-        slider.value = 0;
+        const s = run.stats || {};
+        statsDiv.innerHTML = `
+          <div class="stat"><b>Duration</b><span>${(s.duration_s ?? run.frames[run.frames.length-1].t).toFixed(1)}s</span></div>
+          <div class="stat"><b>Distance</b><span>${(s.distance_m ?? 0).toFixed(1)}m</span></div>
+          <div class="stat"><b>Near Collisions</b><span>${s.near_collision_count ?? run.events.filter(e=>e.type==="near_collision").length}</span></div>
+          <div class="stat"><b>Stuck</b><span>${s.stuck_count ?? run.events.filter(e=>e.type==="stuck").length}</span></div>
+        `;
 
-        draw(0);
-        renderEvents(0);
-      };
+        // slider setup
+        const duration = s.duration_s ?? run.frames[run.frames.length-1].t;
+        slider.max = Math.max(1, Math.floor(duration / run.dt));
+        slider.value = "0";
+
+        // runs list highlight
+        document.querySelectorAll(".runItem").forEach(el => el.classList.remove("runActive"));
+        const active = document.getElementById(`run_${highlightId}`);
+        if (active) active.classList.add("runActive");
+
+        eventsDiv.textContent = "";
+        setTime(0);
+      }
+
+      async function loadRunIndex() {
+        const res = await fetch("../runs/index.json");
+        runIndex = await res.json();
+
+        runsList.innerHTML = "";
+        runIndex.runs.forEach(r => {
+          const div = document.createElement("div");
+          div.id = `run_${r.id}`;
+          div.className = "runItem";
+          div.innerHTML = `<b>${r.label}</b><div class="muted">${r.file}</div>`;
+          div.onclick = () => loadRun(r.file, r.id);
+          runsList.appendChild(div);
+        });
+
+        // auto-load first run
+        if (runIndex.runs.length > 0) {
+          const first = runIndex.runs[0];
+          loadRun(first.file, first.id);
+        }
+      }
 
       slider.oninput = () => {
         if (!run) return;
-        const idx = Number(slider.value);
-        const t = idx * run.dt;
+        stopPlayback();
+        const t = Number(slider.value) * run.dt;
         timeLabel.textContent = t.toFixed(1);
         draw(t);
         renderEvents(t);
       };
+
+      playBtn.onclick = startPlayback;
+      pauseBtn.onclick = stopPlayback;
+
+      speedSel.onchange = () => {
+        if (playing) {
+          stopPlayback();
+          startPlayback();
+        }
+      };
+
+      loadRunIndex();
     </script>
   </body>
 </html>
