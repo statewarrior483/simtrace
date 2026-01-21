@@ -98,6 +98,10 @@
         border: 1px solid #ddd;
         border-radius: 999px;
       }
+      #diagOut {
+        margin-top: 8px;
+        white-space: pre-wrap;
+      }
     </style>
   </head>
 
@@ -126,6 +130,11 @@
         Status: <b id="statusBadge">—</b>
       </div>
       <div class="muted" id="policyText" style="margin-top:6px;"></div>
+
+      <hr />
+
+      <button id="diagBtn" disabled>Diagnose Run</button>
+      <div id="diagOut" class="muted"></div>
     </div>
 
     <div class="panel">
@@ -175,6 +184,9 @@
       const scenarioSel = document.getElementById("scenarioSel");
       const statusBadge = document.getElementById("statusBadge");
       const policyText = document.getElementById("policyText");
+
+      const diagBtn = document.getElementById("diagBtn");
+      const diagOut = document.getElementById("diagOut");
 
       const SCENARIOS = {
         warehouse: {
@@ -316,6 +328,80 @@
           `Score: ${out.score}`;
       }
 
+      function diagnoseRun(r, scenarioKey) {
+        const sc = SCENARIOS[scenarioKey];
+        const s = r.stats || {};
+        const events = r.events || [];
+
+        const near = s.near_collision_count ?? events.filter(e => e.type === "near_collision").length;
+        const stuck = s.stuck_count ?? events.filter(e => e.type === "stuck").length;
+        const duration = s.duration_s ?? r.frames[r.frames.length - 1].t;
+        const distance = s.distance_m ?? 0;
+
+        let severity = "LOW";
+        if (near >= sc.limits.near_collision || stuck >= sc.limits.stuck) severity = "MEDIUM";
+        if (near > sc.limits.near_collision || stuck > sc.limits.stuck) severity = "HIGH";
+
+        let cause = "No major behavioral issues detected.";
+        let fixes = ["- Keep current parameters; expand stress tests."];
+
+        if (stuck > 0) {
+          cause =
+            "Robot enters a deadlock state and fails to recover. This usually indicates missing recovery logic or over-aggressive turning.";
+          fixes = [
+            "- Add recovery behavior: reverse → rotate → retry.",
+            "- Detect oscillation and force a large escape turn.",
+            "- Add timeout-based recovery when no progress is made."
+          ];
+        }
+
+        if (near > sc.limits.near_collision) {
+          cause =
+            "Obstacle avoidance triggers too late, causing repeated near-collisions.";
+          fixes = [
+            "- Increase obstacle clearance threshold.",
+            "- Reduce speed near obstacles.",
+            "- Apply smoothing to distance sensor readings."
+          ];
+        }
+
+        if (stuck > 0 && near > sc.limits.near_collision) {
+          cause =
+            "Compound failure: late avoidance combined with no recovery creates collision-deadlock loops.";
+          fixes = [
+            "- Increase clearance distance AND add recovery behavior.",
+            "- Cap angular velocity to reduce oscillation.",
+            "- Introduce wall-follow fallback in tight spaces."
+          ];
+        }
+
+        const statusObj = computeScenarioStatus(r, scenarioKey);
+
+        return `
+SIMTRACE DIAGNOSIS
+Scenario: ${sc.name}
+Run ID: ${r.run_id}
+
+Policy result: ${statusObj.status}
+Severity: ${severity}
+
+Metrics:
+- Duration: ${duration.toFixed(1)}s
+- Distance: ${distance.toFixed(1)}m
+- Near-collisions: ${near}
+- Stuck events: ${stuck}
+
+Likely root cause:
+${cause}
+
+Recommended fixes:
+${fixes.join("\n")}
+
+Suggested next test:
+- Re-run under "${sc.name}" with narrowed passages and compare PASS/WARN/FAIL + score.
+`.trim();
+      }
+
       async function loadRun(file, highlightId) {
         stopPlayback();
         const res = await fetch(`../runs/${file}`);
@@ -348,6 +434,9 @@
         eventsDiv.textContent = "";
         setTime(0);
         renderScenarioUI();
+
+        diagBtn.disabled = false;
+        diagOut.textContent = "Click Diagnose Run to generate an incident report.";
       }
 
       async function loadRunIndex() {
@@ -391,6 +480,14 @@
 
       scenarioSel.onchange = () => {
         renderScenarioUI();
+        if (run && !diagBtn.disabled) {
+          diagOut.textContent = "Click Diagnose Run to generate an incident report.";
+        }
+      };
+
+      diagBtn.onclick = () => {
+        if (!run) return;
+        diagOut.textContent = diagnoseRun(run, scenarioSel.value);
       };
 
       loadRunIndex();
