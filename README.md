@@ -1,6 +1,6 @@
 # SimTrace
-
 **Scenario-aware simulation replay, comparison, and diagnosis for robotics teams.**
+
 
 SimTrace is a software-only robotics analysis tool that helps teams **replay**, **compare**, and **diagnose** robot behavior across different operational scenarios — all inside a browser.
 
