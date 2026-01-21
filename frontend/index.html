@@ -1,0 +1,120 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>SimTrace</title>
+    <style>
+      body { font-family: Arial, sans-serif; display: grid; grid-template-columns: 250px 1fr 300px; gap: 12px; padding: 12px; }
+      #canvas { border: 1px solid #ccc; width: 100%; height: 520px; }
+      .panel { border: 1px solid #ddd; padding: 10px; border-radius: 8px; }
+      .event { padding: 6px; border-bottom: 1px solid #eee; }
+      .active { background: #f2f2f2; }
+      input[type="range"] { width: 100%; }
+    </style>
+  </head>
+  <body>
+    <div class="panel">
+      <h3>Runs</h3>
+      <button id="loadBtn">Load sample_run</button>
+      <div id="runMeta"></div>
+    </div>
+
+    <div class="panel">
+      <h3>Replay</h3>
+      <canvas id="canvas" width="900" height="520"></canvas>
+      <div>
+        <input id="timeSlider" type="range" min="0" max="200" value="0" />
+        <div>Time: <span id="timeLabel">0.0</span>s</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>Events</h3>
+      <div id="events"></div>
+    </div>
+
+    <script>
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+      const slider = document.getElementById("timeSlider");
+      const timeLabel = document.getElementById("timeLabel");
+      const eventsDiv = document.getElementById("events");
+      const runMeta = document.getElementById("runMeta");
+
+      let run = null;
+
+      function worldToCanvas(x, y) {
+        // simple scaling + flip y so it looks natural
+        const scale = 80;
+        const cx = 100 + x * scale;
+        const cy = 450 - y * scale;
+        return [cx, cy];
+      }
+
+      function draw(t) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (!run) return;
+
+        // path
+        ctx.beginPath();
+        run.frames.forEach((f, i) => {
+          const [cx, cy] = worldToCanvas(f.x, f.y);
+          if (i === 0) ctx.moveTo(cx, cy);
+          else ctx.lineTo(cx, cy);
+        });
+        ctx.stroke();
+
+        // current position (nearest frame)
+        let best = run.frames[0];
+        for (const f of run.frames) {
+          if (Math.abs(f.t - t) < Math.abs(best.t - t)) best = f;
+        }
+        const [bx, by] = worldToCanvas(best.x, best.y);
+        ctx.beginPath();
+        ctx.arc(bx, by, 7, 0, Math.PI * 2);
+        ctx.fill();
+
+        // events highlight
+        const activeTypes = new Set(run.events.filter(e => e.t <= t).map(e => e.type));
+      }
+
+      function renderEvents(t) {
+        eventsDiv.innerHTML = "";
+        run.events.forEach(e => {
+          const div = document.createElement("div");
+          div.className = "event" + (e.t <= t ? " active" : "");
+          div.textContent = `[${e.t.toFixed(1)}s] ${e.type}: ${e.detail}`;
+          eventsDiv.appendChild(div);
+        });
+      }
+
+      document.getElementById("loadBtn").onclick = async () => {
+        const res = await fetch("../runs/sample_run.json");
+        run = await res.json();
+
+        runMeta.innerHTML = `
+          <div><b>ID:</b> ${run.run_id}</div>
+          <div><b>Sim:</b> ${run.meta.sim}</div>
+          <div><b>World:</b> ${run.meta.world}</div>
+          <div><b>Robot:</b> ${run.meta.robot}</div>
+        `;
+
+        slider.max = Math.floor(run.stats.duration_s / run.dt);
+        slider.value = 0;
+
+        draw(0);
+        renderEvents(0);
+      };
+
+      slider.oninput = () => {
+        if (!run) return;
+        const idx = Number(slider.value);
+        const t = idx * run.dt;
+        timeLabel.textContent = t.toFixed(1);
+        draw(t);
+        renderEvents(t);
+      };
+    </script>
+  </body>
+</html>
