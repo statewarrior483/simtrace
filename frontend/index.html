@@ -7,7 +7,7 @@
       body {
         font-family: Arial, sans-serif;
         display: grid;
-        grid-template-columns: 260px 1fr 320px;
+        grid-template-columns: 280px 1fr 340px;
         gap: 12px;
         padding: 12px;
       }
@@ -28,29 +28,12 @@
         margin-bottom: 8px;
         cursor: pointer;
       }
-      .runItem:hover {
-        background: #f7f7f7;
-      }
-      .runActive {
-        background: #f2f2f2;
-        border-color: #ddd;
-      }
-      .event {
-        padding: 6px;
-        border-bottom: 1px solid #eee;
-      }
-      .active {
-        background: #f2f2f2;
-      }
-      input[type="range"] {
-        width: 100%;
-      }
-      .row {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-        flex-wrap: wrap;
-      }
+      .runItem:hover { background: #f7f7f7; }
+      .runActive { background: #f2f2f2; border-color: #ddd; }
+      .event { padding: 6px; border-bottom: 1px solid #eee; }
+      .active { background: #f2f2f2; }
+      input[type="range"] { width: 100%; }
+      .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
       button {
         padding: 6px 10px;
         border: 1px solid #ddd;
@@ -58,22 +41,15 @@
         border-radius: 8px;
         cursor: pointer;
       }
-      button:hover {
-        background: #f7f7f7;
-      }
-      button:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-      }
+      button:hover { background: #f7f7f7; }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
       select {
         padding: 6px 10px;
         border: 1px solid #ddd;
         border-radius: 8px;
+        max-width: 100%;
       }
-      .muted {
-        color: #666;
-        font-size: 12px;
-      }
+      .muted { color: #666; font-size: 12px; }
       .statgrid {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -85,23 +61,24 @@
         border-radius: 8px;
         padding: 8px;
       }
-      .stat b {
-        display: block;
-        font-size: 12px;
-        color: #666;
-      }
-      .stat span {
-        font-size: 16px;
-      }
-      #statusBadge {
+      .stat b { display: block; font-size: 12px; color: #666; }
+      .stat span { font-size: 16px; }
+      #statusBadge, #compareStatusBadge {
         padding: 2px 8px;
         border: 1px solid #ddd;
         border-radius: 999px;
       }
-      #diagOut {
+      #diagOut { margin-top: 8px; white-space: pre-wrap; }
+      .smallBox {
+        border: 1px solid #eee;
+        border-radius: 8px;
+        padding: 8px;
         margin-top: 8px;
-        white-space: pre-wrap;
       }
+      .kv { display: flex; justify-content: space-between; gap: 10px; }
+      .kv span { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      .legend { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
+      .dot { width: 10px; height: 10px; border-radius: 999px; display: inline-block; }
     </style>
   </head>
 
@@ -130,6 +107,31 @@
         Status: <b id="statusBadge">—</b>
       </div>
       <div class="muted" id="policyText" style="margin-top:6px;"></div>
+
+      <hr />
+
+      <div class="row">
+        <label class="muted">Compare to</label>
+        <select id="compareSel">
+          <option value="">None</option>
+        </select>
+      </div>
+
+      <div class="smallBox">
+        <div class="muted" style="margin-bottom:6px;"><b>Comparison (scenario-aware)</b></div>
+        <div class="kv muted"><div>Compare status</div><div><b id="compareStatusBadge">—</b></div></div>
+        <div class="kv muted"><div>Δ score</div><div><span id="deltaScore">—</span></div></div>
+        <div class="kv muted"><div>Δ near-collisions</div><div><span id="deltaNear">—</span></div></div>
+        <div class="kv muted"><div>Δ stuck</div><div><span id="deltaStuck">—</span></div></div>
+        <div class="kv muted"><div>Δ distance</div><div><span id="deltaDist">—</span></div></div>
+        <div class="kv muted"><div>Δ duration</div><div><span id="deltaDur">—</span></div></div>
+        <div class="muted" style="margin-top:6px;" id="compareNote"></div>
+      </div>
+
+      <div class="legend muted">
+        <span class="dot" style="background:#111;"></span> Primary
+        <span class="dot" style="background:#d33;"></span> Compare
+      </div>
 
       <hr />
 
@@ -185,6 +187,15 @@
       const statusBadge = document.getElementById("statusBadge");
       const policyText = document.getElementById("policyText");
 
+      const compareSel = document.getElementById("compareSel");
+      const compareStatusBadge = document.getElementById("compareStatusBadge");
+      const deltaScore = document.getElementById("deltaScore");
+      const deltaNear = document.getElementById("deltaNear");
+      const deltaStuck = document.getElementById("deltaStuck");
+      const deltaDist = document.getElementById("deltaDist");
+      const deltaDur = document.getElementById("deltaDur");
+      const compareNote = document.getElementById("compareNote");
+
       const diagBtn = document.getElementById("diagBtn");
       const diagOut = document.getElementById("diagOut");
 
@@ -192,22 +203,30 @@
         warehouse: {
           name: "Warehouse robot",
           limits: { near_collision: 1, stuck: 0 },
-          weights: { near_collision: 3, stuck: 2 }
+          weights: { near_collision: 3, stuck: 2 },
+          blurb: "Strict indoor policy: tight aisles, low tolerance for near-collisions and deadlocks."
         },
         delivery: {
           name: "Delivery bot (ground)",
           limits: { near_collision: 2, stuck: 1 },
-          weights: { near_collision: 2, stuck: 2 }
+          weights: { near_collision: 2, stuck: 2 },
+          blurb: "Moderate policy: sidewalks + obstacles; some pauses okay, but repeated issues are not."
         },
         sar: {
           name: "Search & rescue",
           limits: { near_collision: 3, stuck: 2 },
-          weights: { near_collision: 1, stuck: 3 }
+          weights: { near_collision: 1, stuck: 3 },
+          blurb: "Lenient collision policy but deadlocks matter: complex terrain; recovery is critical."
         }
       };
 
       let runIndex = null;
       let run = null;
+      let runId = null;
+
+      let compareRun = null;
+      let compareRunId = null;
+
       let playing = false;
       let timer = null;
 
@@ -218,33 +237,64 @@
         return [cx, cy];
       }
 
-      function draw(t) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        if (!run) return;
+      function nearestFrame(frames, t) {
+        let best = frames[0];
+        for (const f of frames) {
+          if (Math.abs(f.t - t) < Math.abs(best.t - t)) best = f;
+        }
+        return best;
+      }
 
+      function drawPath(frames, strokeStyle, lineWidth) {
+        if (!frames || frames.length === 0) return;
         ctx.beginPath();
-        run.frames.forEach((f, i) => {
+        frames.forEach((f, i) => {
           const [cx, cy] = worldToCanvas(f.x, f.y);
           if (i === 0) ctx.moveTo(cx, cy);
           else ctx.lineTo(cx, cy);
         });
+        ctx.strokeStyle = strokeStyle;
+        ctx.lineWidth = lineWidth;
         ctx.stroke();
+        ctx.lineWidth = 1;
+      }
 
-        let best = run.frames[0];
-        for (const f of run.frames) {
-          if (Math.abs(f.t - t) < Math.abs(best.t - t)) best = f;
+      function drawDot(frame, fillStyle, radius) {
+        const [bx, by] = worldToCanvas(frame.x, frame.y);
+        ctx.beginPath();
+        ctx.arc(bx, by, radius, 0, Math.PI * 2);
+        ctx.fillStyle = fillStyle;
+        ctx.fill();
+      }
+
+      function draw(t) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (!run) return;
+
+        // Primary path
+        drawPath(run.frames, "#111", 2);
+
+        // Compare path overlay
+        if (compareRun) drawPath(compareRun.frames, "#d33", 2);
+
+        // Current position dots
+        const primaryFrame = nearestFrame(run.frames, t);
+        drawDot(primaryFrame, "#111", 7);
+
+        if (compareRun) {
+          const compareFrame = nearestFrame(compareRun.frames, t);
+          drawDot(compareFrame, "#d33", 6);
         }
 
-        const [bx, by] = worldToCanvas(best.x, best.y);
-        ctx.beginPath();
-        ctx.arc(bx, by, 7, 0, Math.PI * 2);
-        ctx.fill();
+        // reset styles
+        ctx.strokeStyle = "#000";
+        ctx.fillStyle = "#000";
       }
 
       function renderEvents(t) {
         if (!run) return;
         eventsDiv.innerHTML = "";
-        run.events.forEach(e => {
+        (run.events || []).forEach(e => {
           const div = document.createElement("div");
           div.className = "event" + (e.t <= t ? " active" : "");
           div.textContent = `[${e.t.toFixed(1)}s] ${e.type}: ${e.detail}`;
@@ -294,23 +344,31 @@
         }, 100);
       }
 
-      function computeScenarioStatus(r, scenarioKey) {
-        const sc = SCENARIOS[scenarioKey];
+      function getCounts(r) {
         const s = r.stats || {};
         const events = r.events || [];
-
         const near = (s.near_collision_count ?? events.filter(e => e.type === "near_collision").length);
         const stuck = (s.stuck_count ?? events.filter(e => e.type === "stuck").length);
+        const duration = (s.duration_s ?? (r.frames?.[r.frames.length - 1]?.t ?? 0));
+        const distance = (s.distance_m ?? 0);
+        return { near, stuck, duration, distance };
+      }
 
-        const score =
-          near * sc.weights.near_collision +
-          stuck * sc.weights.stuck;
+      function computeScenarioStatus(r, scenarioKey) {
+        const sc = SCENARIOS[scenarioKey];
+        const { near, stuck } = getCounts(r);
+        const score = near * sc.weights.near_collision + stuck * sc.weights.stuck;
 
         let status = "PASS";
         if (near > sc.limits.near_collision || stuck > sc.limits.stuck) status = "FAIL";
         else if (near === sc.limits.near_collision || stuck === sc.limits.stuck) status = "WARN";
 
         return { near, stuck, score, status, limits: sc.limits, weights: sc.weights };
+      }
+
+      function fmtDelta(n, suffix="") {
+        const sign = n > 0 ? "+" : "";
+        return `${sign}${n}${suffix}`;
       }
 
       function renderScenarioUI() {
@@ -322,10 +380,48 @@
         const key = scenarioSel.value;
         const out = computeScenarioStatus(run, key);
         statusBadge.textContent = out.status;
+
+        const sc = SCENARIOS[key];
         policyText.textContent =
-          `Limits: near-collision ≤ ${out.limits.near_collision}, stuck ≤ ${out.limits.stuck} | ` +
-          `Weights: near=${out.weights.near_collision}, stuck=${out.weights.stuck} | ` +
-          `Score: ${out.score}`;
+          `${sc.blurb} Limits: near ≤ ${out.limits.near_collision}, stuck ≤ ${out.limits.stuck} | ` +
+          `Weights: near=${out.weights.near_collision}, stuck=${out.weights.stuck} | Score: ${out.score}`;
+
+        renderCompareUI();
+      }
+
+      function renderCompareUI() {
+        if (!run || !compareRun) {
+          compareStatusBadge.textContent = "—";
+          deltaScore.textContent = "—";
+          deltaNear.textContent = "—";
+          deltaStuck.textContent = "—";
+          deltaDist.textContent = "—";
+          deltaDur.textContent = "—";
+          compareNote.textContent = "Choose a run in “Compare to” to overlay paths + compute deltas.";
+          return;
+        }
+
+        const key = scenarioSel.value;
+        const baseSc = computeScenarioStatus(run, key);
+        const cmpSc = computeScenarioStatus(compareRun, key);
+
+        const baseCounts = getCounts(run);
+        const cmpCounts = getCounts(compareRun);
+
+        compareStatusBadge.textContent = `${cmpSc.status} (compare) vs ${baseSc.status} (primary)`;
+
+        deltaScore.textContent = fmtDelta(cmpSc.score - baseSc.score);
+        deltaNear.textContent = fmtDelta(cmpCounts.near - baseCounts.near);
+        deltaStuck.textContent = fmtDelta(cmpCounts.stuck - baseCounts.stuck);
+        deltaDist.textContent = fmtDelta(Number((cmpCounts.distance - baseCounts.distance).toFixed(1)), "m");
+        deltaDur.textContent = fmtDelta(Number((cmpCounts.duration - baseCounts.duration).toFixed(1)), "s");
+
+        const better = (cmpSc.score < baseSc.score);
+        const equal = (cmpSc.score === baseSc.score);
+        compareNote.textContent =
+          equal ? "Same scenario score. Compare event timing + path shape."
+                : (better ? "Compare run looks better under this scenario policy (lower score)."
+                          : "Compare run looks worse under this scenario policy (higher score).");
       }
 
       function diagnoseRun(r, scenarioKey) {
@@ -350,7 +446,7 @@
             "Robot enters a deadlock state and fails to recover. This usually indicates missing recovery logic or over-aggressive turning.";
           fixes = [
             "- Add recovery behavior: reverse → rotate → retry.",
-            "- Detect oscillation and force a large escape turn.",
+            "- Detect oscillation and force a larger escape turn.",
             "- Add timeout-based recovery when no progress is made."
           ];
         }
@@ -371,11 +467,19 @@
           fixes = [
             "- Increase clearance distance AND add recovery behavior.",
             "- Cap angular velocity to reduce oscillation.",
-            "- Introduce wall-follow fallback in tight spaces."
+            "- Introduce a wall-follow fallback in tight spaces."
           ];
         }
 
         const statusObj = computeScenarioStatus(r, scenarioKey);
+
+        let compareLine = "";
+        if (compareRun) {
+          const a = computeScenarioStatus(run, scenarioKey);
+          const b = computeScenarioStatus(compareRun, scenarioKey);
+          const delta = b.score - a.score;
+          compareLine = `\nComparison: compare score delta = ${delta > 0 ? "+" : ""}${delta} (compare - primary)\n`;
+        }
 
         return `
 SIMTRACE DIAGNOSIS
@@ -383,7 +487,7 @@ Scenario: ${sc.name}
 Run ID: ${r.run_id}
 
 Policy result: ${statusObj.status}
-Severity: ${severity}
+Severity: ${severity}${compareLine}
 
 Metrics:
 - Duration: ${duration.toFixed(1)}s
@@ -398,14 +502,63 @@ Recommended fixes:
 ${fixes.join("\n")}
 
 Suggested next test:
-- Re-run under "${sc.name}" with narrowed passages and compare PASS/WARN/FAIL + score.
+- Re-run under "${sc.name}" and compare PASS/WARN/FAIL + score before/after tuning.
 `.trim();
+      }
+
+      function populateCompareSelect() {
+        compareSel.innerHTML = `<option value="">None</option>`;
+        if (!runIndex) return;
+
+        runIndex.runs.forEach(r => {
+          // allow comparing against any run (including current), but we’ll handle selection
+          const opt = document.createElement("option");
+          opt.value = r.id;
+          opt.textContent = r.label;
+          compareSel.appendChild(opt);
+        });
+
+        compareSel.value = "";
+        compareRun = null;
+        compareRunId = null;
+        renderCompareUI();
+      }
+
+      async function loadCompareById(id) {
+        if (!id) {
+          compareRun = null;
+          compareRunId = null;
+          renderCompareUI();
+          draw(Number(slider.value) * (run ? run.dt : 0.1));
+          return;
+        }
+
+        // if user picks the same run as primary, treat as None
+        if (id === runId) {
+          compareSel.value = "";
+          compareRun = null;
+          compareRunId = null;
+          renderCompareUI();
+          draw(Number(slider.value) * (run ? run.dt : 0.1));
+          return;
+        }
+
+        const entry = runIndex.runs.find(r => r.id === id);
+        if (!entry) return;
+
+        const res = await fetch(`../runs/${entry.file}`);
+        compareRun = await res.json();
+        compareRunId = id;
+
+        renderCompareUI();
+        draw(Number(slider.value) * run.dt);
       }
 
       async function loadRun(file, highlightId) {
         stopPlayback();
         const res = await fetch(`../runs/${file}`);
         run = await res.json();
+        runId = highlightId;
 
         runMeta.innerHTML = `
           <div><b>ID:</b> ${run.run_id}</div>
@@ -419,8 +572,8 @@ Suggested next test:
         statsDiv.innerHTML = `
           <div class="stat"><b>Duration</b><span>${(s.duration_s ?? run.frames[run.frames.length-1].t).toFixed(1)}s</span></div>
           <div class="stat"><b>Distance</b><span>${(s.distance_m ?? 0).toFixed(1)}m</span></div>
-          <div class="stat"><b>Near Collisions</b><span>${s.near_collision_count ?? run.events.filter(e=>e.type==="near_collision").length}</span></div>
-          <div class="stat"><b>Stuck</b><span>${s.stuck_count ?? run.events.filter(e=>e.type==="stuck").length}</span></div>
+          <div class="stat"><b>Near Collisions</b><span>${s.near_collision_count ?? (run.events||[]).filter(e=>e.type==="near_collision").length}</span></div>
+          <div class="stat"><b>Stuck</b><span>${s.stuck_count ?? (run.events||[]).filter(e=>e.type==="stuck").length}</span></div>
         `;
 
         const duration = s.duration_s ?? run.frames[run.frames.length - 1].t;
@@ -433,10 +586,17 @@ Suggested next test:
 
         eventsDiv.textContent = "";
         setTime(0);
+
         renderScenarioUI();
 
         diagBtn.disabled = false;
         diagOut.textContent = "Click Diagnose Run to generate an incident report.";
+
+        // reset compare when switching primary run
+        compareSel.value = "";
+        compareRun = null;
+        compareRunId = null;
+        renderCompareUI();
       }
 
       async function loadRunIndex() {
@@ -453,9 +613,11 @@ Suggested next test:
           runsList.appendChild(div);
         });
 
+        populateCompareSelect();
+
         if (runIndex.runs.length > 0) {
           const first = runIndex.runs[0];
-          loadRun(first.file, first.id);
+          await loadRun(first.file, first.id);
         }
       }
 
@@ -480,14 +642,16 @@ Suggested next test:
 
       scenarioSel.onchange = () => {
         renderScenarioUI();
-        if (run && !diagBtn.disabled) {
-          diagOut.textContent = "Click Diagnose Run to generate an incident report.";
-        }
+        if (run && !diagBtn.disabled) diagOut.textContent = "Click Diagnose Run to generate an incident report.";
       };
 
       diagBtn.onclick = () => {
         if (!run) return;
         diagOut.textContent = diagnoseRun(run, scenarioSel.value);
+      };
+
+      compareSel.onchange = () => {
+        loadCompareById(compareSel.value);
       };
 
       loadRunIndex();
