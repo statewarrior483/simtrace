@@ -1,0 +1,7 @@
+{
+  "runs": [
+    { "id": "sample_run", "file": "sample_run.json", "label": "Sample Run (normal)" },
+    { "id": "sample_run_2", "file": "sample_run_2.json", "label": "Sample Run 2 (wide loop)" },
+    { "id": "sample_run_bad", "file": "sample_run_bad.json", "label": "Bad Run (stuck + collisions)" }
+  ]
+}

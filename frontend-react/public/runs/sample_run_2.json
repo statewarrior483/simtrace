@@ -1,0 +1,22 @@
+{
+  "run_id": "sample_run_2",
+  "started_at": 0,
+  "dt": 0.1,
+  "meta": { "sim": "sample", "world": "2d_arena", "robot": "dotbot", "controller": "demo_v2" },
+  "stats": { "duration_s": 18, "distance_m": 10.4, "near_collision_count": 1, "stuck_count": 0 },
+  "events": [
+    { "t": 6.8, "type": "near_collision", "detail": "front_sensor<0.12" }
+  ],
+  "frames": [
+    { "t": 0.0, "x": 0.0, "y": 0.0, "yaw": 0.0, "v": 0.6 },
+    { "t": 2.0, "x": 1.0, "y": 0.8, "yaw": 0.6, "v": 0.6 },
+    { "t": 4.0, "x": 1.4, "y": 2.0, "yaw": 1.1, "v": 0.6 },
+    { "t": 6.0, "x": 1.1, "y": 3.2, "yaw": 1.7, "v": 0.6 },
+    { "t": 8.0, "x": 0.2, "y": 4.0, "yaw": 2.4, "v": 0.6 },
+    { "t": 10.0, "x": -1.0, "y": 4.2, "yaw": 3.1, "v": 0.6 },
+    { "t": 12.0, "x": -2.1, "y": 3.7, "yaw": -2.5, "v": 0.6 },
+    { "t": 14.0, "x": -2.8, "y": 2.6, "yaw": -1.8, "v": 0.6 },
+    { "t": 16.0, "x": -2.5, "y": 1.4, "yaw": -1.2, "v": 0.6 },
+    { "t": 18.0, "x": -1.6, "y": 0.4, "yaw": -0.6, "v": 0.6 }
+  ]
+}
